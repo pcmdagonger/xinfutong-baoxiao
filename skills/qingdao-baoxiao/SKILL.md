@@ -1,6 +1,6 @@
 ---
 name: qingdao-baoxiao
-description: Automate or guide Qingdao Xinfutong/Smart Expense material-invoice corporate reimbursement. Use when the user asks for baoxiao, reimbursement, corporate transfer payment, Xinfutong, Smart Expense, acceptance form creation, public-account reimbursement, or provides an invoice/PDF/reimbursement file path plus a funding card/project. Creates draft-only acceptance and corporate reimbursement/payment documents, extracts invoice line items and bank details, validates totals and payee accounts, and never submits approval unless explicitly authorized. This skill is ASCII-only to avoid mojibake; Chinese UI labels are stored as Unicode escapes in the label map.
+description: Automate or guide Qingdao Xinfutong/Smart Expense material-invoice corporate reimbursement using direct Chrome/browser-control automation where available. Use when the user asks for baoxiao, reimbursement, corporate transfer payment, Xinfutong, Smart Expense, acceptance form creation, public-account reimbursement, or provides an invoice/PDF/reimbursement file path plus a funding card/project. Creates draft-only acceptance and corporate reimbursement/payment documents, extracts invoice line items and bank details, validates totals and payee accounts, avoids step-by-step screenshot spam, keeps the conversation compact during long runs, and never submits approval unless explicitly authorized. This skill is ASCII-only to avoid mojibake; Chinese UI labels are stored as Unicode escapes in the label map.
 ---
 
 # Qingdao Baoxiao
@@ -65,6 +65,63 @@ REPORT_PREFIX = "\u62a5"
 ## Core Rule
 
 Create drafts only. Do not click SUBMIT or any approval button unless the user explicitly authorizes submission in the current task.
+
+## Browser Automation Mode
+
+Prefer direct Chrome/browser-control automation over screenshot-driven browser operation.
+
+Operational priorities:
+
+1. Use the Codex Chrome/browser plugin direct-control surface when available.
+2. Prefer DOM/Playwright-style locators, visible DOM, role/text/label selectors, and URL/title/toast checks.
+3. Use screenshots only for:
+   - initial orientation when DOM is insufficient,
+   - visual-only errors,
+   - ambiguous page state,
+   - final evidence if the user explicitly asks for screenshots.
+4. Do not take or emit a screenshot after every click or field entry.
+5. After each action, perform the cheapest useful check:
+   - unique locator count,
+   - current URL/title,
+   - visible toast text,
+   - modal/drawer presence,
+   - specific field value or row count.
+6. Batch low-risk actions into short browser-control code cells. Keep each batch scoped to one section or one modal, then return only a compact status.
+7. Reuse the same browser tab/session. Do not reopen or reload pages unless needed.
+8. Avoid broad body-text dumps and repeated full DOM snapshots. Use one fresh DOM snapshot after navigation or major UI changes, then reuse it until stale.
+9. Before clicking or filling, verify the target is unique when uniqueness is not obvious.
+10. If a locator fails, take a fresh DOM snapshot and change strategy once. If still unclear, pause with a short status and, only then, take one screenshot.
+
+If both an old screenshot-heavy browser tool and a direct Chrome/browser-control tool are available, choose direct Chrome/browser-control. Use coordinate/vision interaction only as a fallback for controls that cannot be reached through DOM or Playwright.
+
+## Long-Run Context Control
+
+This workflow can run long. Keep the conversation short and preserve state outside the chat.
+
+1. Maintain a local run-state file in the current workspace, named `qingdao-baoxiao-run-state.md` or `qingdao-baoxiao-run-state.json`.
+2. Store only compact facts in the run-state file:
+   - current stage and step,
+   - invoice path,
+   - funding card/project,
+   - invoice total and date,
+   - seller/payee,
+   - bank branch/account,
+   - material line count and total,
+   - created draft status,
+   - unresolved blockers.
+3. Update the run-state file after major milestones, not after every click.
+4. In chat, report only milestone summaries:
+   - Stage 1 started,
+   - material import ready,
+   - Stage 1 draft saved,
+   - Stage 2 started,
+   - payment verified,
+   - Stage 2 draft saved,
+   - blocker requiring user action.
+5. Do not paste long DOM snapshots, OCR dumps, table rows, or browser logs into chat. Put necessary details in the run-state file and summarize.
+6. If the thread becomes long or unstable, resume from the run-state file instead of re-reading the full conversation.
+7. If interrupted, first read the run-state file, inspect the current browser tab cheaply, and continue from the latest confirmed milestone.
+8. Keep final output brief and include only completion status, selected project, invoice total, payee/bank verification, and blockers.
 
 ## Required Inputs
 
@@ -218,16 +275,16 @@ If the payee account does not auto-populate, add or select account information f
 
 Save the account, then return to payment detail and select it.
 
-## Historical Field-Format Example
+## Anonymized Field-Format Example
 
-Use this only as a format example, never as a default value:
+Use this only as a format example, never as a default value. Do not store real project names, real suppliers, real bank accounts, or real invoice amounts in this skill file.
 
-- Funding card/project: project code plus funding-card name.
-- Invoice total: `19345.00`
-- Summary shape: decoded REPORT_PREFIX + first asterisk-prefixed material name + decoded MATERIAL_FEE + `19345.00`
-- Invoice date: `2026-05-12`
+- Funding card/project: `PROJECT-CODE + funding-card-name`
+- Invoice total: `1234.56`
+- Summary shape: decoded REPORT_PREFIX + first asterisk-prefixed material name + decoded MATERIAL_FEE + `1234.56`
+- Invoice date: `2099-01-01`
 - Supplier type: temporary supplier, if that is what the system shows.
-- Bank account: digits from PDF payment remarks.
+- Bank account: masked digits from PDF payment remarks, for example `****1234`.
 
 ## Completion Report
 
