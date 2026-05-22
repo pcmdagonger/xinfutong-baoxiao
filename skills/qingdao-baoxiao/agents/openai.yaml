@@ -1,4 +1,4 @@
 interface:
   display_name: "qingdao-baoxiao"
-  short_description: "Automate invoice acceptance and corporate reimbursement drafts"
+  short_description: "Draft Xinfutong invoice acceptance and reimbursement"
   default_prompt: "Use $qingdao-baoxiao with this invoice file path and funding card to create draft reimbursement documents."
