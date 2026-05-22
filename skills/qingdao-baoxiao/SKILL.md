@@ -1,20 +1,77 @@
 ---
 name: qingdao-baoxiao
-description: Automate or guide Qingdao Xinfutong/Smart Expense material-invoice corporate reimbursement. Use when the user asks for baoxiao, reimbursement, corporate transfer payment, Xinfutong, Smart Expense, acceptance form creation, public-account reimbursement, or provides an invoice/PDF/reimbursement file path plus a funding card/project. Creates draft-only acceptance and corporate reimbursement/payment documents, extracts invoice line items and bank details, validates totals and payee accounts, and never submits approval unless explicitly authorized.
+description: Automate or guide Qingdao Xinfutong/Smart Expense material-invoice corporate reimbursement. Use when the user asks for baoxiao, reimbursement, corporate transfer payment, Xinfutong, Smart Expense, acceptance form creation, public-account reimbursement, or provides an invoice/PDF/reimbursement file path plus a funding card/project. Creates draft-only acceptance and corporate reimbursement/payment documents, extracts invoice line items and bank details, validates totals and payee accounts, and never submits approval unless explicitly authorized. This skill is ASCII-only to avoid mojibake; Chinese UI labels are stored as Unicode escapes in the label map.
 ---
 
 # Qingdao Baoxiao
 
+## Encoding Rule
+
+This file is intentionally ASCII-only. Chinese UI labels are written as JSON-style Unicode escapes in the label map below. Decode the escapes to the visible Chinese text before matching or typing in Xinfutong.
+
+Example: `\u667a\u80fd\u8d39\u63a7` means the Smart Expense app label.
+
+## UI Label Map
+
+Use these labels exactly after decoding the Unicode escapes:
+
+```text
+SMART_EXPENSE = "\u667a\u80fd\u8d39\u63a7"
+NEW_DOCUMENT = "\u65b0\u5efa\u5355\u636e"
+GENERAL_ACCEPTANCE_FORM = "\u901a\u7528\u9a8c\u6536\u5355"
+DOCUMENT_PROJECT = "\u5355\u636e\u9879\u76ee"
+LINKED_DOCUMENT = "\u5173\u8054\u5355\u636e"
+ACCEPTANCE_TYPE = "\u9a8c\u6536\u7c7b\u578b"
+PROJECT_MATERIAL_ACCEPTANCE = "\u9879\u76ee\u6750\u6599\u9a8c\u6536\u5355"
+TOTAL_AMOUNT_YUAN = "\u5408\u8ba1\u603b\u91d1\u989d\uff08\u5143\uff09"
+ACCEPTANCE_RESULT = "\u9a8c\u6536\u7ed3\u8bba"
+ACCEPTED_PASS = "\u9a8c\u6536\u5408\u683c\uff0c\u901a\u8fc7"
+NON_FIXED_ASSET_OVER_1000 = "\u662f\u5426\u6d89\u53ca\u5355\u4ef7\u8d851000\u5143\u7684\u975e\u56fa\u5b9a\u8d44\u4ea7\u62a5\u9500"
+SAVE_DRAFT = "\u5b58\u4e3a\u8349\u7a3f"
+SUBMIT = "\u63d0\u4ea4"
+ALL_APPS = "\u5168\u90e8\u5e94\u7528"
+DOCUMENT_TYPE_SELECT = "\u9009\u62e9\u5355\u636e\u7c7b\u578b"
+CORPORATE_DOCUMENTS = "\u5bf9\u516c\u5355\u636e"
+CORPORATE_REIMBURSEMENT = "\u5bf9\u516c\u62a5\u8d26"
+EXPENSE_PROJECT = "\u652f\u51fa\u9879\u76ee"
+SUMMARY = "\u6458\u8981"
+REIMBURSEMENT_DETAILS = "\u62a5\u9500\u660e\u7ec6"
+PAYMENT_DETAILS = "\u4ed8\u6b3e\u660e\u7ec6"
+ADD_EXPENSE = "\u6dfb\u52a0\u8d39\u7528"
+NEW_EXPENSE = "\u65b0\u589e\u8d39\u7528"
+UPLOAD_INVOICE_FILE = "\u4e0a\u4f20\u53d1\u7968\u6587\u4ef6"
+EXPENSE_TYPE = "\u8d39\u7528\u7c7b\u578b"
+RESEARCH_MATERIAL_FEE = "\u79d1\u7814\u4e8b\u4e1a\u652f\u51fa / \u6750\u6599\u8d39"
+EXPENSE_CATEGORY = "\u8d39\u7528\u7c7b\u522b"
+MATERIAL_FEE = "\u6750\u6599\u8d39"
+EXPENSE_TOTAL = "\u8d39\u7528\u5408\u8ba1"
+INVOICE_COUNT = "\u53d1\u7968\u5f20\u6570"
+INVOICE_AMOUNT = "\u53d1\u7968\u91d1\u989d"
+EDIT = "\u7f16\u8f91"
+PAYEE = "\u6536\u6b3e\u65b9"
+PAYEE_ACCOUNT = "\u6536\u6b3e\u8d26\u6237"
+SAVE_SUCCESS = "\u4fdd\u5b58\u6210\u529f\uff01"
+REIMPORT = "\u91cd\u65b0\u5bfc\u5165"
+OPEN = "\u6253\u5f00"
+BANK_ACCOUNT_NAME = "\u94f6\u884c\u8d26\u6237\u540d"
+BANK_ACCOUNT = "\u94f6\u884c\u8d26\u53f7"
+BANK_BRANCH_NAME = "\u5f00\u6237\u884c\u540d\u79f0"
+IMPORT_PARSE_ERROR = "\u6587\u4ef6\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u4e0b\u8f7d\u6a21\u677f\u6838\u5bf9\u57fa\u7840\u4fe1\u606f\u8f93\u5165"
+ZERO_ERROR_PREVIEW_EXAMPLE = "\u9519\u8bef0\u9879\uff0c\u6b63\u786e7\u9879"
+QINGDAO_RESEARCH_INSTITUTE = "\u9752\u5c9b\u7814\u7a76\u9662"
+REPORT_PREFIX = "\u62a5"
+```
+
 ## Core Rule
 
-Create drafts only. Do not click any submit or approval button unless the user explicitly authorizes submission in the current task.
+Create drafts only. Do not click SUBMIT or any approval button unless the user explicitly authorizes submission in the current task.
 
 ## Required Inputs
 
 Before starting, obtain:
 
-- Reimbursement file path: invoice PDF or folder containing the invoice/reimbursement files.
-- Funding card/project: the exact funding card, project name, or search keyword to select in the system.
+- Reimbursement file path: invoice PDF or folder containing invoice/reimbursement files.
+- Funding card/project: exact funding card, project name, or search keyword to select in the system.
 
 Infer all other fields from the invoice and system when possible. Ask the user only when a required value cannot be confirmed.
 
@@ -25,121 +82,115 @@ Extract and verify these values from the invoice PDF:
 - invoice total amount
 - invoice date
 - seller/payee name
-- payee name, bank branch, and bank account from the payment remarks
+- payee name, bank branch, and bank account from payment remarks
 - each material line item: name, quantity, unit, tax-included unit price, amount, tax rate, and tax amount
 
 Line-item names are fragile:
 
 - Preserve every asterisk in invoice item names.
-- Preserve the tax classification prefix, such as `*阀门龙头*氮气减压器`.
+- Preserve the tax classification prefix, for example an item may start with `*...*`.
 - Merge names split only by PDF visual wrapping.
 - Do not split one wrapped item into two items.
 - Verify line count, item names, and total amount before importing.
 
 ## Stage 1: Acceptance Form Draft
 
-Goal: create one `通用验收单` from the invoice and save it as draft only.
+Goal: create one GENERAL_ACCEPTANCE_FORM from the invoice and save it as draft only.
 
 1. Enter Xinfutong.
-2. Open `智能费控`.
-3. Click `新建单据`.
-4. Select `通用验收单`.
+2. Open SMART_EXPENSE.
+3. Click NEW_DOCUMENT.
+4. Select GENERAL_ACCEPTANCE_FORM.
 5. Fill base fields:
-   - `单据项目`: select the user-provided funding card/project.
-   - `关联单据`: leave empty.
-   - `验收类型`: select `项目材料验收单`.
+   - DOCUMENT_PROJECT: select the user-provided funding card/project.
+   - LINKED_DOCUMENT: leave empty.
+   - ACCEPTANCE_TYPE: select PROJECT_MATERIAL_ACCEPTANCE.
 6. Prepare the material detail import from invoice line items.
 7. Download the latest import template from the current page.
 8. Fill the template with extracted material data.
 9. Upload and preview the import file.
-10. Import only when the preview has zero errors, for example `错误0项，正确7项`.
+10. Import only when the preview has zero errors, such as ZERO_ERROR_PREVIEW_EXAMPLE.
 11. If the system keeps the original blank first row, delete that blank row.
 12. Check every imported line against the PDF.
 13. Fill supplemental fields:
-   - `合计总金额（元）`: invoice total.
-   - `验收结论`: `验收合格，通过`.
-   - `是否涉及单价超1000元的非固定资产报销`: determine from line items.
+   - TOTAL_AMOUNT_YUAN: invoice total.
+   - ACCEPTANCE_RESULT: ACCEPTED_PASS.
+   - NON_FIXED_ASSET_OVER_1000: determine from line items.
 14. Check the system bottom total.
-15. Click `存为草稿`.
+15. Click SAVE_DRAFT.
 16. Do not submit.
 
 Before saving Stage 1, verify:
 
-- Document type is `通用验收单`.
+- Document type is GENERAL_ACCEPTANCE_FORM.
 - Project matches the user-provided funding card/project.
-- `关联单据` is empty.
-- `验收类型` is `项目材料验收单`.
+- LINKED_DOCUMENT is empty.
+- ACCEPTANCE_TYPE is PROJECT_MATERIAL_ACCEPTANCE.
 - Material lines exactly match the PDF.
 - Asterisks and tax classification prefixes are retained.
-- Total amount equals the invoice total.
+- Total amount equals invoice total.
 - Bottom system total is correct.
 - The over-1000-yuan non-fixed-asset judgment is correct.
 
 ## Stage 2: Corporate Reimbursement And Payment Draft
 
-Goal: create one `对公报账` and payment draft from the same invoice, save as draft only.
+Goal: create one CORPORATE_REIMBURSEMENT and payment draft from the same invoice, save as draft only.
 
-1. From the Stage 1 page, enter `全部应用`.
-2. Click `智能费控` to return to the workbench.
-3. Click `新建单据`.
-4. In `选择单据类型`, switch to `对公单据`.
-5. Click `对公报账`.
-6. Keep `关联单据` empty.
-7. Set `支出项目` to the user-provided funding card/project.
-8. Fill `摘要` using this format:
-
-```text
-报 + first material item name with asterisk + 材料费 + invoice total amount
-```
-
-Example:
+1. From the Stage 1 page, enter ALL_APPS.
+2. Click SMART_EXPENSE to return to the workbench.
+3. Click NEW_DOCUMENT.
+4. In DOCUMENT_TYPE_SELECT, switch to CORPORATE_DOCUMENTS.
+5. Click CORPORATE_REIMBURSEMENT.
+6. Keep LINKED_DOCUMENT empty.
+7. Set EXPENSE_PROJECT to the user-provided funding card/project.
+8. Fill SUMMARY using this decoded format:
 
 ```text
-报*阀门龙头*氮气减压器材料费19345.00
+REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice total amount
 ```
 
-9. Scroll to `报销明细`; avoid overscrolling to `付款明细`.
-10. Click `添加费用`.
-11. In `新增费用`, click `上传发票文件`.
+9. Scroll to REIMBURSEMENT_DETAILS; avoid overscrolling to PAYMENT_DETAILS.
+10. Click ADD_EXPENSE.
+11. In NEW_EXPENSE, click UPLOAD_INVOICE_FILE.
 12. Upload the invoice PDF.
 13. After OCR/recognition, verify seller, amount, and invoice date.
-14. Set `费用类型` to `科研事业支出 / 材料费`.
+14. Set EXPENSE_TYPE to RESEARCH_MATERIAL_FEE.
 15. Save the expense and return to the main form.
 16. Verify reimbursement detail:
-   - `费用类别`: `材料费`
-   - `费用合计`: invoice total
-   - `发票张数`: actual invoice count, usually `1`
-   - `发票金额`: invoice total
-17. Go to `付款明细` and edit the existing payment detail.
-18. Click `收款方`.
+   - EXPENSE_CATEGORY: MATERIAL_FEE
+   - EXPENSE_TOTAL: invoice total
+   - INVOICE_COUNT: actual invoice count, usually 1
+   - INVOICE_AMOUNT: invoice total
+17. Go to PAYMENT_DETAILS and edit the existing payment detail using EDIT.
+18. Click PAYEE.
 19. If a same-name temporary supplier already exists, select it. Do not create a duplicate.
-20. Check whether `收款账户` auto-populates.
+20. Check whether PAYEE_ACCOUNT auto-populates.
 21. If it auto-populates, compare with PDF remarks:
    - payee name
    - bank branch
    - bank account
 22. Save the payment popup.
 23. Return to the main form and verify reimbursement amount, invoice amount, payee, bank branch, and bank account.
-24. Click `存为草稿`.
-25. Treat `保存成功！` as completion.
+24. Click SAVE_DRAFT.
+25. Treat SAVE_SUCCESS as completion.
 
 Before saving Stage 2, verify:
 
-- Document type is `对公报账`.
-- `关联单据` is empty.
-- `支出项目` matches the user-provided funding card/project.
-- `摘要` follows the required format and amount equals the invoice total.
-- `费用类型` is `科研事业支出 / 材料费`.
+- Document type is CORPORATE_REIMBURSEMENT.
+- LINKED_DOCUMENT is empty.
+- EXPENSE_PROJECT matches the user-provided funding card/project.
+- SUMMARY follows the required format and amount equals invoice total.
+- EXPENSE_TYPE is RESEARCH_MATERIAL_FEE.
 - Invoice amount, reimbursement amount, and expense total match.
 - Seller/payee matches the PDF.
 - Bank branch and bank account match the PDF remarks.
 
 ## Exception Handling
 
-If template import fails with `文件解析失败，请下载模板核对基础信息输入`:
+If template import fails with IMPORT_PARSE_ERROR:
 
 1. Stop retrying the same file.
-2. Click `重新导入`.
+2. Click REIMPORT.
 3. Download the latest template from the current page.
 4. Regenerate the Excel import file.
 5. Upload and preview again.
@@ -147,45 +198,43 @@ If template import fails with `文件解析失败，请下载模板核对基础�
 
 If an extra blank row remains after import, delete it and recheck line count and totals.
 
-If a red warning says the storage location must be `青岛研究院`, do not silently override the user-provided location. Try the user location first; if blocked, ask before falling back to the system-required location.
+If a red warning says the storage location must be QINGDAO_RESEARCH_INSTITUTE, do not silently override the user-provided location. Try the user location first; if blocked, ask before falling back to the system-required location.
 
-If a click appears to do nothing, re-locate the exact button text in the current business area and retry once. If still unclear, screenshot and pause.
+If a click appears to do nothing, re-locate the exact decoded button text in the current business area and retry once. If still unclear, screenshot and pause.
 
 If scrolling loses the target area, identify the current module heading and navigate back to the intended section.
 
-If `全部应用` does not respond, click the top navigation text itself rather than the edge of the region.
+If ALL_APPS does not respond, click the top navigation text itself rather than the edge of the region.
 
-If `添加费用` appears unresponsive, check whether the right-side `新增费用` drawer already opened or whether a payment-detail button was clicked by mistake.
+If ADD_EXPENSE appears unresponsive, check whether the right-side NEW_EXPENSE drawer already opened or whether a payment-detail button was clicked by mistake.
 
-If the invoice upload file dialog does not open, try double-clicking `上传发票文件`. When the dialog appears, enter the absolute PDF path in the filename box and click `打开`.
+If the invoice upload file dialog does not open, try double-clicking UPLOAD_INVOICE_FILE. When the dialog appears, enter the absolute PDF path in the filename box and click OPEN.
 
 If the payee account does not auto-populate, add or select account information from PDF remarks:
 
-- `银行账户名`: supplier/payee name
-- `银行账号`: bank account in PDF remarks
-- `开户行名称`: bank branch in PDF remarks
+- BANK_ACCOUNT_NAME: supplier/payee name
+- BANK_ACCOUNT: bank account in PDF remarks
+- BANK_BRANCH_NAME: bank branch in PDF remarks
 
 Save the account, then return to payment detail and select it.
 
-## Historical Example
+## Historical Field-Format Example
 
-Use this only as a field-format example, never as a default value:
+Use this only as a format example, never as a default value:
 
-- Funding card/project: `平台人才-PRJ20250420144154-王富强工作室启动经费`
+- Funding card/project: project code plus funding-card name.
 - Invoice total: `19345.00`
-- Summary: `报*阀门龙头*氮气减压器材料费19345.00`
+- Summary shape: decoded REPORT_PREFIX + first asterisk-prefixed material name + decoded MATERIAL_FEE + `19345.00`
 - Invoice date: `2026-05-12`
-- Seller/payee: `荣成市新拓威实验仪器商行（个体工商户）`
-- Supplier type: `临时供应商`
-- Bank branch: `中国银行股份有限公司威海开发区支行`
-- Bank account: `226054929904`
+- Supplier type: temporary supplier, if that is what the system shows.
+- Bank account: digits from PDF payment remarks.
 
 ## Completion Report
 
 When finished, report:
 
-- whether the `通用验收单` draft was saved
-- whether the `对公报账` draft was saved
+- whether the GENERAL_ACCEPTANCE_FORM draft was saved
+- whether the CORPORATE_REIMBURSEMENT draft was saved
 - selected funding card/project
 - invoice total
 - payee, bank branch, and bank account verification result
