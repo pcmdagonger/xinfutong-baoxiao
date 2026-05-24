@@ -4,10 +4,10 @@ Codex skill for automating Qingdao Xinfutong material invoice reimbursement draf
 
 ## Skill
 
-- `skills/qingdao-baoxiao`
+- `skills/xinfutong-baoxiao`
 
 Invoke in Codex as:
 
 ```text
-$qingdao-baoxiao
+$xinfutong-baoxiao
 ```

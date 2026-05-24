@@ -1,0 +1,4 @@
+interface:
+  display_name: "xinfutong-baoxiao"
+  short_description: "Draft Xinfutong invoice acceptance and reimbursement"
+  default_prompt: "Use $xinfutong-baoxiao with this invoice file path and funding card to create draft reimbursement documents."

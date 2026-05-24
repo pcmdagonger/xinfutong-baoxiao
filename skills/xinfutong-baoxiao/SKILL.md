@@ -1,9 +1,9 @@
 ---
-name: qingdao-baoxiao
+name: xinfutong-baoxiao
 description: Automate or guide Qingdao Xinfutong/Smart Expense material-invoice corporate reimbursement using direct Chrome/browser-control automation where available. Use when the user asks for baoxiao, reimbursement, corporate transfer payment, Xinfutong, Smart Expense, acceptance form creation, public-account reimbursement, or provides an invoice/PDF/reimbursement file path plus a funding card/project. Creates draft-only acceptance and corporate reimbursement/payment documents, extracts invoice line items and bank details, validates totals and payee accounts, avoids step-by-step screenshot spam, keeps the conversation compact during long runs, and never submits approval unless explicitly authorized. This skill is ASCII-only to avoid mojibake; Chinese UI labels are stored as Unicode escapes in the label map.
 ---
 
-# Qingdao Baoxiao
+# Xinfutong Baoxiao
 
 ## Encoding Rule
 
@@ -60,6 +60,16 @@ IMPORT_PARSE_ERROR = "\u6587\u4ef6\u89e3\u6790\u5931\u8d25\uff0c\u8bf7\u4e0b\u8f
 ZERO_ERROR_PREVIEW_EXAMPLE = "\u9519\u8bef0\u9879\uff0c\u6b63\u786e7\u9879"
 QINGDAO_RESEARCH_INSTITUTE = "\u9752\u5c9b\u7814\u7a76\u9662"
 REPORT_PREFIX = "\u62a5"
+PLEASE_SELECT = "\u8bf7\u9009\u62e9"
+FIELD_VALIDATION_EXPENSE_TYPE = "\u5b57\u6bb5\u9a8c\u8bc1\u9519\u8bef\u8d39\u7528\u7c7b\u578b"
+HORIZONTAL_FUND_EXPENSE = "\u6a2a\u5411\u7ecf\u8d39\u652f\u51fa"
+VERTICAL_LUMP_SUM_EXPENSE = "\u7eb5\u5411\u5305\u5e72\u7ecf\u8d39\u652f\u51fa"
+PAYABLE_AMOUNT = "\u5e94\u4ed8\u91d1\u989d"
+ACTUAL_PAYMENT_AMOUNT = "\u5b9e\u4ed8\u91d1\u989d"
+UNSUBMITTED = "\u672a\u63d0\u4ea4"
+SUPPLIER_NAME = "\u4f9b\u5e94\u5546\u540d\u79f0"
+TEMPORARY_SUPPLIER = "\u4e34\u65f6\u4f9b\u5e94\u5546"
+UNIFIED_SOCIAL_CREDIT_CODE = "\u7edf\u4e00\u793e\u4f1a\u4fe1\u7528\u4ee3\u7801"
 ```
 
 ## Core Rule
@@ -94,11 +104,22 @@ Operational priorities:
 
 If both an old screenshot-heavy browser tool and a direct Chrome/browser-control tool are available, choose direct Chrome/browser-control. Use coordinate/vision interaction only as a fallback for controls that cannot be reached through DOM or Playwright.
 
+## Known UI Quirks
+
+Use these hard-won rules from real Xinfutong runs:
+
+1. The acceptance-form material table is a virtual scrolling table. DOM locators can point to visible rows rather than stable logical rows.
+2. When manually filling the material table, always confirm visible row numbers before and after filling.
+3. If available, use the table `.rc-virtual-list-holder` scroll container and call `scrollTo(0, 0)` before filling from row 1.
+4. If the visible row range shifts, stop and re-check row numbers before continuing.
+5. Corporate reimbursement draft list rows may show `CNY 0.00` even when the reopened draft contains correct internal totals.
+6. Do not treat the list amount alone as authoritative. Reopen the draft and verify internal totals before declaring failure or recreating the draft.
+
 ## Long-Run Context Control
 
 This workflow can run long. Keep the conversation short and preserve state outside the chat.
 
-1. Maintain a local run-state file in the current workspace, named `qingdao-baoxiao-run-state.md` or `qingdao-baoxiao-run-state.json`.
+1. Maintain a local run-state file in the current workspace, named `xinfutong-baoxiao-run-state.md` or `xinfutong-baoxiao-run-state.json`.
 2. Store only compact facts in the run-state file:
    - current stage and step,
    - invoice path,
@@ -107,6 +128,12 @@ This workflow can run long. Keep the conversation short and preserve state outsi
    - seller/payee,
    - bank branch/account,
    - material line count and total,
+   - acceptance_draft_id,
+   - corporate_reimbursement_draft_id,
+   - import_strategy: `batch_import`, `manual_fill`, or `batch_import_failed_manual_fill`,
+   - corporate_list_amount,
+   - corporate_internal_amount_verified,
+   - warnings,
    - created draft status,
    - unresolved blockers.
 3. Update the run-state file after major milestones, not after every click.
@@ -163,12 +190,27 @@ Goal: create one GENERAL_ACCEPTANCE_FORM from the invoice and save it as draft o
    - LINKED_DOCUMENT: leave empty.
    - ACCEPTANCE_TYPE: select PROJECT_MATERIAL_ACCEPTANCE.
 6. Prepare the material detail import from invoice line items.
-7. Download the latest import template from the current page.
-8. Fill the template with extracted material data.
-9. Upload and preview the import file.
-10. Import only when the preview has zero errors, such as ZERO_ERROR_PREVIEW_EXAMPLE.
-11. If the system keeps the original blank first row, delete that blank row.
-12. Check every imported line against the PDF.
+7. Prefer batch import if the file chooser works:
+   - download the latest import template from the active page when practical,
+   - generate the import file from PDF-extracted material rows,
+   - upload and preview once,
+   - import only when the preview has zero errors, such as ZERO_ERROR_PREVIEW_EXAMPLE.
+8. If the file chooser or upload does not open within one timeout, do not repeatedly retry the same upload path. Fall back to manual table filling and record `batch_import_failed_manual_fill` in run-state.
+9. Manual table filling rules:
+   - first add the exact number of rows required,
+   - reset the virtual table scroll before filling by locating `.rc-virtual-list-holder` and calling `scrollTo(0, 0)`,
+   - fill in small batches,
+   - confirm visible row numbers before and after each batch,
+   - stop and correct if row numbers or row contents become misaligned.
+10. After import or manual fill, verify:
+   - row count equals invoice line count,
+   - visible row numbers are correct,
+   - every item name, including asterisks and prefixes, is present,
+   - supplier is present,
+   - row amounts sum to invoice total,
+   - bottom total equals invoice total.
+11. If the system keeps the original blank first row after import, delete that blank row.
+12. Check every imported or manually filled line against the PDF.
 13. Fill supplemental fields:
    - TOTAL_AMOUNT_YUAN: invoice total.
    - ACCEPTANCE_RESULT: ACCEPTED_PASS.
@@ -211,14 +253,26 @@ REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice 
 11. In NEW_EXPENSE, click UPLOAD_INVOICE_FILE.
 12. Upload the invoice PDF.
 13. After OCR/recognition, verify seller, amount, and invoice date.
-14. Set EXPENSE_TYPE to RESEARCH_MATERIAL_FEE.
+14. Set EXPENSE_TYPE carefully:
+   - open the EXPENSE_TYPE dropdown,
+   - select the RESEARCH_MATERIAL_FEE category path,
+   - if the dropdown shows categories first, select the research-business category first, then select the first MATERIAL_FEE under it,
+   - after selecting, verify the field no longer says PLEASE_SELECT,
+   - verify there is no FIELD_VALIDATION_EXPENSE_TYPE validation error,
+   - an internal-code display plus MATERIAL_FEE is acceptable if validation clears and the saved expense row shows MATERIAL_FEE.
+   - do not select MATERIAL_FEE from HORIZONTAL_FUND_EXPENSE, VERTICAL_LUMP_SUM_EXPENSE, or other categories unless the user explicitly says the project uses that category.
 15. Save the expense and return to the main form.
 16. Verify reimbursement detail:
    - EXPENSE_CATEGORY: MATERIAL_FEE
    - EXPENSE_TOTAL: invoice total
    - INVOICE_COUNT: actual invoice count, usually 1
    - INVOICE_AMOUNT: invoice total
-17. Go to PAYMENT_DETAILS and edit the existing payment detail using EDIT.
+17. Go to PAYMENT_DETAILS and edit the existing payment detail:
+   - scroll to PAYMENT_DETAILS,
+   - confirm the payment row is visible,
+   - prefer a visible text/role locator for EDIT,
+   - if DOM text exists but is not clickable, use one screenshot/coordinate fallback only for the visible payment-row EDIT button,
+   - after the payment popup opens, verify it contains PAYEE, PAYEE_ACCOUNT, and PAYABLE_AMOUNT.
 18. Click PAYEE.
 19. If a same-name temporary supplier already exists, select it. Do not create a duplicate.
 20. Check whether PAYEE_ACCOUNT auto-populates.
@@ -226,10 +280,19 @@ REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice 
    - payee name
    - bank branch
    - bank account
-22. Save the payment popup.
-23. Return to the main form and verify reimbursement amount, invoice amount, payee, bank branch, and bank account.
-24. Click SAVE_DRAFT.
-25. Treat SAVE_SUCCESS as completion.
+22. When creating a new temporary supplier/account:
+   - supplier name must equal the seller/payee from the PDF,
+   - fill UNIFIED_SOCIAL_CREDIT_CODE if available from invoice seller info,
+   - BANK_ACCOUNT_NAME must equal the seller/payee,
+   - BANK_ACCOUNT must equal the PDF remarks account,
+   - BANK_BRANCH_NAME should be selected from system suggestions,
+   - minor official-name normalization is acceptable when the account number and bank are correct,
+   - after saving the account, return to payment detail and verify the selected account appears in the payment popup before saving payment detail.
+23. Save the payment popup.
+24. Return to the main form and verify reimbursement amount, invoice amount, payee, bank branch, bank account, PAYABLE_AMOUNT, and ACTUAL_PAYMENT_AMOUNT.
+25. Click SAVE_DRAFT.
+26. Treat SAVE_SUCCESS as draft-save completion.
+27. After saving, if the corporate draft list row amount shows `CNY 0.00`, do not recreate the draft immediately. Reopen the saved corporate draft and verify internal expense total, invoice amount, PAYABLE_AMOUNT, ACTUAL_PAYMENT_AMOUNT, payee, bank branch, and bank account. If internal values are correct, report completion with a warning and record it in run-state.
 
 Before saving Stage 2, verify:
 
@@ -241,6 +304,7 @@ Before saving Stage 2, verify:
 - Invoice amount, reimbursement amount, and expense total match.
 - Seller/payee matches the PDF.
 - Bank branch and bank account match the PDF remarks.
+- If the list amount is `CNY 0.00`, reopened internal values are verified before reporting completion.
 
 ## Exception Handling
 
@@ -252,6 +316,14 @@ If template import fails with IMPORT_PARSE_ERROR:
 4. Regenerate the Excel import file.
 5. Upload and preview again.
 6. Import only after zero errors.
+
+If the batch import upload control does not trigger a file chooser:
+
+1. Retry once using the actual `input[type="file"]` if visible.
+2. If the second attempt also times out, stop the import path.
+3. Switch to manual table filling.
+4. Record in run-state that import upload failed and manual fill fallback was used.
+5. Do not let repeated file chooser timeouts reset or stall the browser workflow.
 
 If an extra blank row remains after import, delete it and recheck line count and totals.
 
@@ -275,6 +347,30 @@ If the payee account does not auto-populate, add or select account information f
 
 Save the account, then return to payment detail and select it.
 
+## Fast Verification Checklist
+
+Stage 1:
+
+- Project contains the user funding-card code.
+- Acceptance type is PROJECT_MATERIAL_ACCEPTANCE.
+- Line count equals invoice.
+- Every item name preserves asterisks and prefixes.
+- Total equals invoice total.
+- NON_FIXED_ASSET_OVER_1000 is correct.
+- Draft list shows UNSUBMITTED.
+
+Stage 2:
+
+- Project contains the user funding-card code.
+- SUMMARY format is correct.
+- EXPENSE_TYPE is RESEARCH_MATERIAL_FEE.
+- INVOICE_AMOUNT equals invoice total.
+- EXPENSE_TOTAL equals invoice total.
+- PAYABLE_AMOUNT and ACTUAL_PAYMENT_AMOUNT equal invoice total.
+- PAYEE and account match PDF.
+- Draft list shows UNSUBMITTED.
+- If list amount is `CNY 0.00`, reopen and verify internal totals before reporting.
+
 ## Anonymized Field-Format Example
 
 Use this only as a format example, never as a default value. Do not store real project names, real suppliers, real bank accounts, or real invoice amounts in this skill file.
@@ -295,4 +391,5 @@ When finished, report:
 - selected funding card/project
 - invoice total
 - payee, bank branch, and bank account verification result
+- any `CNY 0.00` corporate-list warning and whether internal totals were verified
 - any unresolved issue requiring user action
