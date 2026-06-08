@@ -104,6 +104,27 @@ Operational priorities:
 
 If both an old screenshot-heavy browser tool and a direct Chrome/browser-control tool are available, choose direct Chrome/browser-control. Use coordinate/vision interaction only as a fallback for controls that cannot be reached through DOM or Playwright.
 
+## Performance Budget And Stall Control
+
+The main failure mode for this skill is not missing domain knowledge; it is spending too long re-checking unchanged page state, retrying a broken upload path, or taking screenshots when DOM state is already enough. Run with explicit budgets:
+
+1. Use these default timeouts unless the browser tool has stricter limits:
+   - locator or field visibility: 5 seconds,
+   - modal/drawer open: 10 seconds,
+   - toast after save/import: 10 seconds,
+   - page navigation or major route change: 20 seconds,
+   - file chooser: 8 seconds,
+   - invoice OCR/import processing: 60 seconds.
+2. Never repeat the same failed click, upload, selector, or scroll strategy more than twice. After two failures, switch strategy or stop with a compact blocker.
+3. Treat two consecutive actions with no observable state change as a stall. Inspect current URL/title, active modal, and one focused DOM snapshot; then choose one recovery action.
+4. Keep a `last_confirmed_page_state` entry in run-state after every major navigation. Reuse it for later decisions until navigation, save, import, modal open/close, or scroll changes the relevant area.
+5. Batch DOM reads. For a form section, read labels, values, validation messages, and relevant row totals in one browser-control call, then decide locally.
+6. Batch low-risk fills in one section at a time. Do not issue a separate tool call per field when the fields are visible together.
+7. Use screenshots only when DOM evidence is insufficient or a coordinate fallback is needed. One screenshot must lead to a decision; do not enter a screenshot-review loop.
+8. Prefer one checkpoint verification per stage. If a value was just verified and the page area has not changed, cite the cached verification instead of reading it again.
+9. Record retries and fallback choices in run-state with short keys such as `upload_retry_count`, `locator_retry_count`, and `fallback_reason`.
+10. If total active automation time exceeds 20 minutes without saving a new draft or reaching a new confirmed milestone, pause and report the latest confirmed stage plus the blocker.
+
 ## Known UI Quirks
 
 Use these hard-won rules from real Xinfutong runs:
@@ -130,6 +151,9 @@ This workflow can run long. Keep the conversation short and preserve state outsi
    - material line count and total,
    - acceptance_draft_id,
    - corporate_reimbursement_draft_id,
+   - last_confirmed_page_state,
+   - last_checkpoint_verification,
+   - retry counters for upload, locator, scroll, and OCR/import,
    - import_strategy: `batch_import`, `manual_fill`, or `batch_import_failed_manual_fill`,
    - corporate_list_amount,
    - corporate_internal_amount_verified,
@@ -149,6 +173,8 @@ This workflow can run long. Keep the conversation short and preserve state outsi
 6. If the thread becomes long or unstable, resume from the run-state file instead of re-reading the full conversation.
 7. If interrupted, first read the run-state file, inspect the current browser tab cheaply, and continue from the latest confirmed milestone.
 8. Keep final output brief and include only completion status, selected project, invoice total, payee/bank verification, and blockers.
+9. Prefer JSON for run-state when the task is active, because it is cheaper to parse and update precisely. Markdown is acceptable for human-readable summaries after completion.
+10. Do not rewrite the whole run-state after every low-level action. Update it after stage start, extraction complete, import/manual-fill strategy chosen, Stage 1 saved, Stage 2 started, payment verified, Stage 2 saved, or blocker.
 
 ## Required Inputs
 
@@ -195,14 +221,14 @@ Goal: create one GENERAL_ACCEPTANCE_FORM from the invoice and save it as draft o
    - generate the import file from PDF-extracted material rows,
    - upload and preview once,
    - import only when the preview has zero errors, such as ZERO_ERROR_PREVIEW_EXAMPLE.
-8. If the file chooser or upload does not open within one timeout, do not repeatedly retry the same upload path. Fall back to manual table filling and record `batch_import_failed_manual_fill` in run-state.
+8. If the file chooser or upload does not open within the Performance Budget, retry once through `input[type="file"]` if available. If that also fails, fall back to manual table filling and record `batch_import_failed_manual_fill` in run-state.
 9. Manual table filling rules:
    - first add the exact number of rows required,
    - reset the virtual table scroll before filling by locating `.rc-virtual-list-holder` and calling `scrollTo(0, 0)`,
-   - fill in small batches,
-   - confirm visible row numbers before and after each batch,
+   - fill 5 to 10 visible rows per browser-control call, depending on viewport stability,
+   - confirm visible row numbers once before each batch and once after each batch,
    - stop and correct if row numbers or row contents become misaligned.
-10. After import or manual fill, verify:
+10. After import or manual fill, run one material checkpoint verification and store the result in run-state:
    - row count equals invoice line count,
    - visible row numbers are correct,
    - every item name, including asterisks and prefixes, is present,
@@ -210,7 +236,7 @@ Goal: create one GENERAL_ACCEPTANCE_FORM from the invoice and save it as draft o
    - row amounts sum to invoice total,
    - bottom total equals invoice total.
 11. If the system keeps the original blank first row after import, delete that blank row.
-12. Check every imported or manually filled line against the PDF.
+12. Check every imported or manually filled line against the PDF during the material checkpoint. Do not repeat the full line-by-line check later unless the table changes.
 13. Fill supplemental fields:
    - TOTAL_AMOUNT_YUAN: invoice total.
    - ACCEPTANCE_RESULT: ACCEPTED_PASS.
@@ -219,7 +245,7 @@ Goal: create one GENERAL_ACCEPTANCE_FORM from the invoice and save it as draft o
 15. Click SAVE_DRAFT.
 16. Do not submit.
 
-Before saving Stage 1, verify:
+Before saving Stage 1, verify once. Reuse the material checkpoint for unchanged table rows:
 
 - Document type is GENERAL_ACCEPTANCE_FORM.
 - Project matches the user-provided funding card/project.
@@ -252,7 +278,7 @@ REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice 
 10. Click ADD_EXPENSE.
 11. In NEW_EXPENSE, click UPLOAD_INVOICE_FILE.
 12. Upload the invoice PDF.
-13. After OCR/recognition, verify seller, amount, and invoice date.
+13. After OCR/recognition, verify seller, amount, and invoice date in one focused read and store the result in run-state.
 14. Set EXPENSE_TYPE carefully:
    - open the EXPENSE_TYPE dropdown,
    - select the RESEARCH_MATERIAL_FEE category path,
@@ -262,7 +288,7 @@ REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice 
    - an internal-code display plus MATERIAL_FEE is acceptable if validation clears and the saved expense row shows MATERIAL_FEE.
    - do not select MATERIAL_FEE from HORIZONTAL_FUND_EXPENSE, VERTICAL_LUMP_SUM_EXPENSE, or other categories unless the user explicitly says the project uses that category.
 15. Save the expense and return to the main form.
-16. Verify reimbursement detail:
+16. Verify reimbursement detail in one focused read:
    - EXPENSE_CATEGORY: MATERIAL_FEE
    - EXPENSE_TOTAL: invoice total
    - INVOICE_COUNT: actual invoice count, usually 1
@@ -289,12 +315,12 @@ REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice 
    - minor official-name normalization is acceptable when the account number and bank are correct,
    - after saving the account, return to payment detail and verify the selected account appears in the payment popup before saving payment detail.
 23. Save the payment popup.
-24. Return to the main form and verify reimbursement amount, invoice amount, payee, bank branch, bank account, PAYABLE_AMOUNT, and ACTUAL_PAYMENT_AMOUNT.
+24. Return to the main form and run one payment checkpoint verification for reimbursement amount, invoice amount, payee, bank branch, bank account, PAYABLE_AMOUNT, and ACTUAL_PAYMENT_AMOUNT.
 25. Click SAVE_DRAFT.
 26. Treat SAVE_SUCCESS as draft-save completion.
 27. After saving, if the corporate draft list row amount shows `CNY 0.00`, do not recreate the draft immediately. Reopen the saved corporate draft and verify internal expense total, invoice amount, PAYABLE_AMOUNT, ACTUAL_PAYMENT_AMOUNT, payee, bank branch, and bank account. If internal values are correct, report completion with a warning and record it in run-state.
 
-Before saving Stage 2, verify:
+Before saving Stage 2, verify once. Reuse the expense and payment checkpoints for unchanged values:
 
 - Document type is CORPORATE_REIMBURSEMENT.
 - LINKED_DOCUMENT is empty.
@@ -316,6 +342,7 @@ If template import fails with IMPORT_PARSE_ERROR:
 4. Regenerate the Excel import file.
 5. Upload and preview again.
 6. Import only after zero errors.
+7. If the regenerated template also fails, stop the import path and switch to manual table filling. Do not try a third import file in the same run.
 
 If the batch import upload control does not trigger a file chooser:
 
@@ -332,6 +359,8 @@ If a red warning says the storage location must be QINGDAO_RESEARCH_INSTITUTE, d
 If a click appears to do nothing, re-locate the exact decoded button text in the current business area and retry once. If still unclear, screenshot and pause.
 
 If scrolling loses the target area, identify the current module heading and navigate back to the intended section.
+
+If the same page region has been inspected twice with no progress, stop inspecting it. Either choose the documented fallback or report a compact blocker.
 
 If ALL_APPS does not respond, click the top navigation text itself rather than the edge of the region.
 
