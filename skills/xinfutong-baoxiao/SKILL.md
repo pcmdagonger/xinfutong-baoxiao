@@ -84,12 +84,8 @@ Operational priorities:
 
 1. Use the Codex Chrome/browser plugin direct-control surface when available.
 2. Prefer DOM/Playwright-style locators, visible DOM, role/text/label selectors, and URL/title/toast checks.
-3. Use screenshots only for:
-   - initial orientation when DOM is insufficient,
-   - visual-only errors,
-   - ambiguous page state,
-   - final evidence if the user explicitly asks for screenshots.
-4. Do not take or emit a screenshot after every click or field entry.
+3. Default screenshot budget is zero. Do not take screenshots for orientation, routine verification, ambiguous state, or after clicks/fills.
+4. Use screenshots only when the user explicitly asks for screenshots, or after DOM/control automation is impossible and the user approves one screenshot for a specific blocker.
 5. After each action, perform the cheapest useful check:
    - unique locator count,
    - current URL/title,
@@ -97,12 +93,25 @@ Operational priorities:
    - modal/drawer presence,
    - specific field value or row count.
 6. Batch low-risk actions into short browser-control code cells. Keep each batch scoped to one section or one modal, then return only a compact status.
-7. Reuse the same browser tab/session. Do not reopen or reload pages unless needed.
+7. Reuse the same dedicated automation tab/session. Do not reopen or reload pages unless needed.
 8. Avoid broad body-text dumps and repeated full DOM snapshots. Use one fresh DOM snapshot after navigation or major UI changes, then reuse it until stale.
 9. Before clicking or filling, verify the target is unique when uniqueness is not obvious.
-10. If a locator fails, take a fresh DOM snapshot and change strategy once. If still unclear, pause with a short status and, only then, take one screenshot.
+10. If a locator fails, take a fresh DOM snapshot and change strategy once. If still unclear, pause with a short blocker instead of taking a screenshot.
 
-If both an old screenshot-heavy browser tool and a direct Chrome/browser-control tool are available, choose direct Chrome/browser-control. Use coordinate/vision interaction only as a fallback for controls that cannot be reached through DOM or Playwright.
+If both an old screenshot-heavy browser tool and a direct Chrome/browser-control tool are available, choose direct Chrome/browser-control. Avoid vision-based interaction. If coordinates are unavoidable, derive them from DOM bounding boxes in the recorded automation tab rather than from screenshots.
+
+## Dedicated Chrome Tab Policy
+
+Do not take over the user's current Chrome page. Xinfutong work must run in a dedicated automation tab in the user's existing Chrome profile so login cookies are still available.
+
+1. At startup, inspect Chrome pages/tabs when the tool supports it. Record the current active tab title/URL as `original_user_tab` in run-state before navigating anywhere.
+2. If an existing Xinfutong/Smart Expense automation tab is already recorded in run-state and still reachable, reuse that tab.
+3. If no recorded automation tab exists, search open tabs for an existing Xinfutong or Smart Expense page. Reuse it only if it is not a clearly unrelated user page.
+4. If no suitable tab exists, open a new tab for Xinfutong/Smart Expense. Do not call navigation on the currently active non-Xinfutong tab.
+5. Store `automation_tab_id` or the best available tab handle, plus `automation_tab_url` and `automation_tab_title`, in run-state.
+6. All later browser-control calls must target the recorded automation tab/page. If the tool loses the page handle, reacquire by URL/title from run-state before acting.
+7. Do not close, reload, or navigate the original user tab. If the browser tool supports focusing tabs, restore focus to `original_user_tab` when pausing or finishing.
+8. If the only available control surface can operate only on the active tab and cannot open or target a separate tab, stop and report this limitation instead of using the user's current page.
 
 ## Performance Budget And Stall Control
 
@@ -120,7 +129,7 @@ The main failure mode for this skill is not missing domain knowledge; it is spen
 4. Keep a `last_confirmed_page_state` entry in run-state after every major navigation. Reuse it for later decisions until navigation, save, import, modal open/close, or scroll changes the relevant area.
 5. Batch DOM reads. For a form section, read labels, values, validation messages, and relevant row totals in one browser-control call, then decide locally.
 6. Batch low-risk fills in one section at a time. Do not issue a separate tool call per field when the fields are visible together.
-7. Use screenshots only when DOM evidence is insufficient or a coordinate fallback is needed. One screenshot must lead to a decision; do not enter a screenshot-review loop.
+7. Screenshot fallback is disabled by default. When DOM evidence is insufficient, use focused DOM snapshots, accessibility tree, URL/title, field values, toast text, and bounding boxes first. Ask before taking any screenshot.
 8. Prefer one checkpoint verification per stage. If a value was just verified and the page area has not changed, cite the cached verification instead of reading it again.
 9. Record retries and fallback choices in run-state with short keys such as `upload_retry_count`, `locator_retry_count`, and `fallback_reason`.
 10. If total active automation time exceeds 20 minutes without saving a new draft or reaching a new confirmed milestone, pause and report the latest confirmed stage plus the blocker.
@@ -151,6 +160,10 @@ This workflow can run long. Keep the conversation short and preserve state outsi
    - material line count and total,
    - acceptance_draft_id,
    - corporate_reimbursement_draft_id,
+   - original_user_tab,
+   - automation_tab_id,
+   - automation_tab_url,
+   - automation_tab_title,
    - last_confirmed_page_state,
    - last_checkpoint_verification,
    - retry counters for upload, locator, scroll, and OCR/import,
@@ -297,7 +310,7 @@ REPORT_PREFIX + first material item name with asterisk + MATERIAL_FEE + invoice 
    - scroll to PAYMENT_DETAILS,
    - confirm the payment row is visible,
    - prefer a visible text/role locator for EDIT,
-   - if DOM text exists but is not clickable, use one screenshot/coordinate fallback only for the visible payment-row EDIT button,
+   - if DOM text exists but is not clickable, use DOM bounding boxes, keyboard focus, or JavaScript click in the recorded automation tab; do not use screenshot/coordinate fallback unless the user explicitly approves it,
    - after the payment popup opens, verify it contains PAYEE, PAYEE_ACCOUNT, and PAYABLE_AMOUNT.
 18. Click PAYEE.
 19. If a same-name temporary supplier already exists, select it. Do not create a duplicate.
@@ -356,7 +369,7 @@ If an extra blank row remains after import, delete it and recheck line count and
 
 If a red warning says the storage location must be QINGDAO_RESEARCH_INSTITUTE, do not silently override the user-provided location. Try the user location first; if blocked, ask before falling back to the system-required location.
 
-If a click appears to do nothing, re-locate the exact decoded button text in the current business area and retry once. If still unclear, screenshot and pause.
+If a click appears to do nothing, re-locate the exact decoded button text in the current business area and retry once. If still unclear, pause with a compact blocker; do not screenshot by default.
 
 If scrolling loses the target area, identify the current module heading and navigate back to the intended section.
 
